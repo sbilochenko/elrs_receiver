@@ -7,4 +7,4 @@
 
 4) [Код тесту роботи ESP+ELRS RX](test/main_test_elrs.cpp)
 5) Коли апаратура та RX зв'язані і між ними є bind - рухайте стіками апаратури керування і у serial monitor має бути видно дані, <img width="798" height="323" alt="{E5F33828-43BD-438E-B7E9-83EA40AECC58}" src="https://github.com/user-attachments/assets/513a9323-3bb5-4efd-9e8d-ba7fe69ddd16" />
-6) далі можна користуватися [файлом main.cpp](src/main,cpp)  цього репозиторію
+6) далі можна користуватися [файлом main.cpp](src/main.cpp)  цього репозиторію
