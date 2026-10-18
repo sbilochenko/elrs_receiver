@@ -4,4 +4,4 @@
 3) <img width="816" height="760" alt="image" src="https://github.com/user-attachments/assets/3be57da5-d14a-4688-8c30-e75b6f0a9a06" />
 знайдіть розпіновку вашого ESP32, 
 перевірено роботу при підключенні до GPIO16 - cюди приєднуємо TX приймача
-4) [Код тесту роботи ESP+ELRS RX](test/main_test_erls.cpp)
+4) [Код тесту роботи ESP+ELRS RX](test/main_test_elrs.cpp)
