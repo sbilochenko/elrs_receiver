@@ -47,4 +47,23 @@ The ESP32 connects to the Raspberry Pi 5 through USB.
 - **Data format:** `RC,linear,angular,valid`
 - **Purpose:** Sends normalized joystick commands to the ROS 2 node.
 
-**Note:** The receiver's `T` pin is connected to the ESP32's UART RX pin because `T` transmits CRSF data from the receiver. The receiver's `R` pin is not connected in this configuration.
+**Note:** The receiver's `T` pin is connected to the ESP32's UART RX pin because `T` transmits CRSF data from the receiver.
+
+### Web Calibration
+
+The ESP32 creates a Wi-Fi access point:
+
+SSID: ELRS-Setup
+
+Password: ELRSsetup26
+
+Web interface: http://192.168.4.1
+
+The web interface allows live channel monitoring and calibration.
+
+Project Status
+
+The receiver interface and web calibration have been tested. The ESP32 sends control data to a Raspberry Pi 5 running ROS 2 Jazzy.
+
+Motor control is not implemented in this project stage.
+The receiver's `R` pin is not connected in this configuration.
