@@ -1,0 +1,11 @@
+
+.pio/
+
+# VS Code: локальні налаштування
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Системні файли
+.DS_Store
+Thumbs.db
