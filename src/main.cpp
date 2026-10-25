@@ -16,7 +16,7 @@ static constexpr uint32_t CHANNEL_TIMEOUT_MS = 150;
 // ---------- Wi-Fi setup AP ----------
 // Зміни пароль на власний: щонайменше 8 символів.
 static const char *AP_SSID = "ELRS-Setup";
-static const char *AP_PASSWORD = "ELRSsetup26";
+static const char *AP_PASSWORD = "2128506Za";
 
 WebServer server(80);
 Preferences preferences;
@@ -432,7 +432,14 @@ bool readConfigFromRequest(Calibration &next) {
 
   return validCalibration(next);
 }
+bool authorizeCalibrationRequest() {
+  if (!server.authenticate("admin", AP_PASSWORD)) {
+    server.requestAuthentication(BASIC_AUTH, "ELRS Calibration");
+    return false;
+  }
 
+  return true;
+}
 void setupWebServer() {
   server.on("/", HTTP_GET, []() {
     server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
@@ -524,7 +531,12 @@ void loop() {
   const float linear = valid ? getLinear() : 0.0f;
   const float angular = valid ? getAngular() : 0.0f;
 
-  // USB Serial protocol stays compatible with radio_ctrl_node
-  Serial.printf("RC,%.3f,%.3f,%d\n",
-                linear, angular, valid ? 1 : 0);
+  // USB Serial: RC,valid,ch1,ch2,...,ch16
+  Serial.printf("RC,%d", valid ? 1 : 0);
+
+  for (int i = 0; i < 16; ++i) {
+    Serial.printf(",%u", valid ? channels[i] : 0);
+  }
+
+  Serial.println();
 }
