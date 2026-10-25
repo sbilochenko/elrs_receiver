@@ -35,6 +35,7 @@ struct Calibration {
 };
 
 Calibration cal;
+Calibration draftCal;
 
 uint16_t channels[16] = {};
 bool haveChannels = false;
@@ -84,7 +85,7 @@ bool decodeChannels(const uint8_t *p, size_t len) {
   return true;
 }
 
-void processFrame(const uint8_t *f, size_t total) {
+bool processFrame(const uint8_t *f, size_t total) {
   const uint8_t length = f[1];
   const uint8_t type = f[2];
 
@@ -93,7 +94,7 @@ void processFrame(const uint8_t *f, size_t total) {
 
   if (actualCrc != expectedCrc) {
     ++crcErrors;
-    return;
+    return false;
   }
 
   if (type == 0x16 && length == 24) {
@@ -103,6 +104,8 @@ void processFrame(const uint8_t *f, size_t total) {
       ++validFrames;
     }
   }
+
+  return true;
 }
 
 void readCrsf() {
@@ -126,7 +129,12 @@ void readCrsf() {
       const size_t total = static_cast<size_t>(length) + 2;
       if (frameSize < total) break;
 
-      processFrame(frame, total);
+      if (!processFrame(frame, total)) {
+        // A bad candidate may have started mid-stream. Drop one byte and
+        // search again so a valid frame inside the candidate is not skipped.
+        memmove(frame, frame + 1, --frameSize);
+        continue;
+      }
 
       frameSize -= total;
       if (frameSize > 0) {
@@ -187,6 +195,17 @@ float getAngular() {
 }
 
 // ---------- Preferences ----------
+bool validCalibration(const Calibration &candidate) {
+  return candidate.ch1Min >= 0 && candidate.ch1Max <= 2047 &&
+         candidate.ch3Min >= 0 && candidate.ch3Max <= 2047 &&
+         candidate.ch1Min < candidate.ch1Center &&
+         candidate.ch1Center < candidate.ch1Max &&
+         candidate.ch3Min < candidate.ch3Center &&
+         candidate.ch3Center < candidate.ch3Max &&
+         isfinite(candidate.deadZone) &&
+         candidate.deadZone >= 0.0f && candidate.deadZone <= 0.25f;
+}
+
 void loadCalibration() {
   preferences.begin("elrs-cal", true);
 
@@ -202,40 +221,33 @@ void loadCalibration() {
 
   preferences.end();
 
-  if (!(cal.ch1Min < cal.ch1Center &&
-        cal.ch1Center < cal.ch1Max &&
-        cal.ch3Min < cal.ch3Center &&
-        cal.ch3Center < cal.ch3Max &&
-        cal.deadZone >= 0.0f &&
-        cal.deadZone <= 0.25f)) {
+  if (!validCalibration(cal)) {
     cal = Calibration{};
   }
+
+  draftCal = cal;
 }
 
 bool saveCalibration() {
-  if (!(cal.ch1Min < cal.ch1Center &&
-        cal.ch1Center < cal.ch1Max &&
-        cal.ch3Min < cal.ch3Center &&
-        cal.ch3Center < cal.ch3Max &&
-        cal.deadZone >= 0.0f &&
-        cal.deadZone <= 0.25f)) {
+  if (!validCalibration(cal)) {
     return false;
   }
 
-  preferences.begin("elrs-cal", false);
+  if (!preferences.begin("elrs-cal", false)) {
+    return false;
+  }
 
-  preferences.putInt("c1min", cal.ch1Min);
-  preferences.putInt("c1ctr", cal.ch1Center);
-  preferences.putInt("c1max", cal.ch1Max);
-
-  preferences.putInt("c3min", cal.ch3Min);
-  preferences.putInt("c3ctr", cal.ch3Center);
-  preferences.putInt("c3max", cal.ch3Max);
-
-  preferences.putFloat("dead", cal.deadZone);
+  bool ok = true;
+  ok = (preferences.putInt("c1min", cal.ch1Min) > 0) && ok;
+  ok = (preferences.putInt("c1ctr", cal.ch1Center) > 0) && ok;
+  ok = (preferences.putInt("c1max", cal.ch1Max) > 0) && ok;
+  ok = (preferences.putInt("c3min", cal.ch3Min) > 0) && ok;
+  ok = (preferences.putInt("c3ctr", cal.ch3Center) > 0) && ok;
+  ok = (preferences.putInt("c3max", cal.ch3Max) > 0) && ok;
+  ok = (preferences.putFloat("dead", cal.deadZone) > 0) && ok;
 
   preferences.end();
-  return true;
+  return ok;
 }
 
 // ---------- Web page ----------
@@ -339,16 +351,24 @@ async function capture(field){
     message('Захоплено '+field+' = '+d[field]);
   }catch(e){message('Помилка: '+e.message);}
 }
-async function applyConfig(){
+async function applyConfig(showMessage=true){
   const p=new URLSearchParams();
   for(const id of ids)p.set(id,document.getElementById(id).value);
   p.set('dead',document.getElementById('dead').value);
-  try{setFields(await api('/api/config?'+p.toString()));message('Параметри застосовано');}
-  catch(e){message('Помилка: '+e.message);}
+  try{
+    setFields(await api('/api/config?'+p.toString()));
+    if(showMessage)message('Параметри застосовано');
+    return true;
+  }catch(e){
+    message('Помилка: '+e.message);
+    return false;
+  }
 }
 async function saveConfig(){
   try{
-    await applyConfig();
+    // Never persist the previous active calibration if applying the current
+    // values failed validation.
+    if(!await applyConfig(false)) return;
     const d=await api('/api/save');
     message(d.message);
   }catch(e){message('Помилка: '+e.message);}
@@ -374,13 +394,13 @@ loadConfig();update();setInterval(update,250);
 
 void sendConfigJson(bool includeLive) {
   String json = "{";
-  json += "\"c1min\":" + String(cal.ch1Min) + ",";
-  json += "\"c1ctr\":" + String(cal.ch1Center) + ",";
-  json += "\"c1max\":" + String(cal.ch1Max) + ",";
-  json += "\"c3min\":" + String(cal.ch3Min) + ",";
-  json += "\"c3ctr\":" + String(cal.ch3Center) + ",";
-  json += "\"c3max\":" + String(cal.ch3Max) + ",";
-  json += "\"dead\":" + String(cal.deadZone, 3);
+  json += "\"c1min\":" + String(draftCal.ch1Min) + ",";
+  json += "\"c1ctr\":" + String(draftCal.ch1Center) + ",";
+  json += "\"c1max\":" + String(draftCal.ch1Max) + ",";
+  json += "\"c3min\":" + String(draftCal.ch3Min) + ",";
+  json += "\"c3ctr\":" + String(draftCal.ch3Center) + ",";
+  json += "\"c3max\":" + String(draftCal.ch3Max) + ",";
+  json += "\"dead\":" + String(draftCal.deadZone, 3);
 
   if (includeLive) {
     json += ",\"valid\":" + String(signalValid() ? "true" : "false");
@@ -410,13 +430,7 @@ bool readConfigFromRequest(Calibration &next) {
   next.ch3Max = server.arg("c3max").toInt();
   next.deadZone = server.arg("dead").toFloat();
 
-  return next.ch1Min >= 0 && next.ch1Max <= 2047 &&
-         next.ch3Min >= 0 && next.ch3Max <= 2047 &&
-         next.ch1Min < next.ch1Center &&
-         next.ch1Center < next.ch1Max &&
-         next.ch3Min < next.ch3Center &&
-         next.ch3Center < next.ch3Max &&
-         next.deadZone >= 0.0f && next.deadZone <= 0.25f;
+  return validCalibration(next);
 }
 
 void setupWebServer() {
@@ -439,12 +453,12 @@ void setupWebServer() {
     const int ch1 = channels[0];
     const int ch3 = channels[2];
 
-    if (field == "c1min") cal.ch1Min = ch1;
-    else if (field == "c1ctr") cal.ch1Center = ch1;
-    else if (field == "c1max") cal.ch1Max = ch1;
-    else if (field == "c3min") cal.ch3Min = ch3;
-    else if (field == "c3ctr") cal.ch3Center = ch3;
-    else if (field == "c3max") cal.ch3Max = ch3;
+    if (field == "c1min") draftCal.ch1Min = ch1;
+    else if (field == "c1ctr") draftCal.ch1Center = ch1;
+    else if (field == "c1max") draftCal.ch1Max = ch1;
+    else if (field == "c3min") draftCal.ch3Min = ch3;
+    else if (field == "c3ctr") draftCal.ch3Center = ch3;
+    else if (field == "c3max") draftCal.ch3Max = ch3;
     else {
       server.send(400, "application/json", "{\"error\":\"Bad field\"}");
       return;
@@ -454,7 +468,7 @@ void setupWebServer() {
   });
 
   server.on("/api/config", HTTP_GET, []() {
-    Calibration next = cal;
+    Calibration next = draftCal;
 
     if (!readConfigFromRequest(next)) {
       server.send(400, "application/json",
@@ -463,6 +477,7 @@ void setupWebServer() {
     }
 
     cal = next;
+    draftCal = next;
     sendConfigJson(false);
   });
 
