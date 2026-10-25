@@ -155,7 +155,7 @@ class RadioCtrlNode(Node):
 
             if fresh:
                 msg.linear.x = self.linear * self.max_linear
-                msg.angular.z = self.angular * self.max_angular
+                msg.angular.z = -self.angular * self.max_angular
             else:
                 self.linear = 0.0
                 self.angular = 0.0
