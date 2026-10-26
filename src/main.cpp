@@ -207,7 +207,11 @@ bool validCalibration(const Calibration &candidate) {
 }
 
 void loadCalibration() {
-  preferences.begin("elrs-cal", true);
+  if (!preferences.begin("elrs-cal", true)) {
+    cal = Calibration{};
+    draftCal = cal;
+    return;
+  }
 
   cal.ch1Min = preferences.getInt("c1min", 174);
   cal.ch1Center = preferences.getInt("c1ctr", 992);
@@ -450,6 +454,7 @@ void setupWebServer() {
   });
 
   server.on("/api/capture", HTTP_GET, []() {
+    if (!authorizeCalibrationRequest()) return;
     if (!signalValid()) {
       server.send(409, "application/json",
                   "{\"error\":\"No valid RC signal\"}");
@@ -475,6 +480,7 @@ void setupWebServer() {
   });
 
   server.on("/api/config", HTTP_GET, []() {
+    if (!authorizeCalibrationRequest()) return;
     Calibration next = draftCal;
 
     if (!readConfigFromRequest(next)) {
@@ -489,6 +495,7 @@ void setupWebServer() {
   });
 
   server.on("/api/save", HTTP_GET, []() {
+    if (!authorizeCalibrationRequest()) return;
     if (!saveCalibration()) {
       server.send(400, "application/json",
                   "{\"error\":\"Calibration invalid; not saved\"}");
